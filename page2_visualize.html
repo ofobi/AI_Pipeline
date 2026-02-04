@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pipeline Route Optimizer - Step 2: Visualize Data</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.gridlayer.googlemutant@0.13.4/dist/Leaflet.GoogleMutant.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a222d;
+      --surface-hover: #222d3b;
+      --border: #2d3a4a;
+      --text: #e8edf4;
+      --text-secondary: #8b9eb5;
+      --text-muted: #5c6f87;
+      --accent: #00b4d8;
+      --accent-hover: #48cae4;
+      --accent-soft: rgba(0, 180, 216, 0.15);
+      --success: #06d6a0;
+      --warning: #ffd166;
+      --error: #ef476f;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      font-family: 'DM Sans', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      grid-template-rows: 64px 1fr;
+      height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, var(--surface) 0%, #15202b 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent) 0%, #0077b6 100%);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+    }
+    .logo-text h1 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .logo-text span {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* Progress Steps */
+    .progress-steps {
+      display: flex;
+      gap: 16px;
+    }
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      background: var(--surface-hover);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .step:hover:not(.active) {
+      background: var(--surface);
+      border-color: var(--accent);
+    }
+    .step.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      cursor: default;
+    }
+    .step.complete {
+      cursor: pointer;
+    }
+    .step-number {
+      width: 24px;
+      height: 24px;
+      background: var(--border);
+      color: var(--text-secondary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .step.active .step-number {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    .step.complete .step-number {
+      background: var(--success);
+      color: var(--bg);
+    }
+    .step-label {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+    .step.active .step-label {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .panel::-webkit-scrollbar { width: 6px; }
+    .panel::-webkit-scrollbar-track { background: transparent; }
+    .panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .panel.right { border-right: none; border-left: 1px solid var(--border); }
+
+    /* Cards */
+    .card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 14px;
+    }
+
+    /* Layer List */
+    .layer-list {
+      list-style: none;
+      padding: 0;
+    }
+    .layer-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .layer-item:hover {
+      background: var(--surface-hover);
+      border-color: var(--accent);
+    }
+    .layer-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+    .layer-item span {
+      font-size: 0.9rem;
+      color: var(--text);
+      text-transform: capitalize;
+    }
+
+    /* Suitability Tabs */
+    .suit-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .tab {
+      flex: 1;
+      padding: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab:hover {
+      background: var(--surface-hover);
+    }
+    .tab.active {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--accent), #0077b6);
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 10px;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 180, 216, 0.4);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-secondary {
+      background: linear-gradient(135deg, var(--surface-hover), var(--surface));
+      border: 1px solid var(--border);
+    }
+
+    /* Status */
+    .status {
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      margin-top: 12px;
+      display: none;
+    }
+    .status.success {
+      background: rgba(6, 214, 160, 0.15);
+      color: var(--success);
+      border: 1px solid var(--success);
+      display: block;
+    }
+    .status.error {
+      background: rgba(239, 71, 111, 0.15);
+      color: var(--error);
+      border: 1px solid var(--error);
+      display: block;
+    }
+
+    /* Map */
+    #map {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+    }
+
+    /* Legend */
+    .legend {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .legend-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 0.8rem;
+    }
+    .legend-color {
+      width: 30px;
+      height: 16px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div class="logo">
+        <div class="logo-icon">🛢️</div>
+        <div class="logo-text">
+          <h1>Pipeline Route Optimizer</h1>
+          <span>AI-Powered Suitability Analysis</span>
+        </div>
+      </div>
+      <div class="progress-steps">
+        <div class="step complete" onclick="window.location.href='index.html'">
+          <div class="step-number">✓</div>
+          <div class="step-label">Upload</div>
+        </div>
+        <div class="step active">
+          <div class="step-number">2</div>
+          <div class="step-label">Visualize</div>
+        </div>
+        <div class="step" onclick="window.location.href='page3_route.html'">
+          <div class="step-number">3</div>
+          <div class="step-label">Route</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Left Panel: Layer Controls -->
+    <div class="panel">
+      <div class="card">
+        <div class="card-title">📊 Input Data Layers</div>
+        <ul class="layer-list" id="layerList">
+          <li class="layer-item">
+            <input type="checkbox" id="layer-dem">
+            <span>DEM (Elevation)</span>
+          </li>
+          <li class="layer-item">
+            <input type="checkbox" id="layer-slope">
+            <span>Slope (from DEM)</span>
+          </li>
+          <li class="layer-item">
+            <input type="checkbox" id="layer-flow">
+            <span>Flow Accumulation</span>
+          </li>
+          <li class="layer-item">
+            <input type="checkbox" id="layer-soil">
+            <span>Soil Type</span>
+          </li>
+          <li class="layer-item">
+            <input type="checkbox" id="layer-lulc">
+            <span>Land Use / Land Cover</span>
+          </li>
+          <li class="layer-item">
+            <input type="checkbox" id="layer-road">
+            <span>Distance to Road</span>
+          </li>
+          <li class="layer-item">
+            <input type="checkbox" id="layer-water">
+            <span>Distance to Water Body</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🎯 Suitability Map</div>
+        <div class="suit-tabs">
+          <div class="tab active" data-format="raw">Raw</div>
+          <div class="tab" data-format="index">Index</div>
+          <div class="tab" data-format="classified">Class</div>
+        </div>
+        <button class="btn" id="computeSuitability">
+          🚀 Compute Suitability
+        </button>
+        <div id="suitStatus" class="status"></div>
+
+        <div class="legend" id="legend" style="display: none;">
+          <div class="legend-title">Suitability Classes</div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #006400;"></div>
+            <span>Very Suitable</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #90EE90;"></div>
+            <span>Suitable</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #FFFF00;"></div>
+            <span>Moderately Suitable</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #FFA500;"></div>
+            <span>Less Suitable</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #FF0000;"></div>
+            <span>Not Suitable</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Map -->
+    <div id="map"></div>
+
+    <!-- Right Panel: Downloads & Next Step -->
+    <div class="panel right">
+      <div class="card">
+        <div class="card-title">💾 Download Suitability Maps</div>
+        <button class="btn btn-secondary" id="downloadRaw" disabled>
+          📄 Download Raw (.tif)
+        </button>
+        <button class="btn btn-secondary" id="downloadIndex" disabled>
+          📊 Download Index (0-10) (.tif)
+        </button>
+        <button class="btn btn-secondary" id="downloadClassified" disabled>
+          🎨 Download Classified (.tif)
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⚙️ Configuration Summary</div>
+        <div id="configSummary" style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6;">
+          Loading configuration...
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">➡️ Next Step</div>
+        <button class="btn" id="proceedToRoute">
+          Generate Optimal Route →
+        </button>
+        <button class="btn btn-secondary" onclick="window.location.href='index.html'" style="margin-top: 10px;">
+          ← Back to Upload
+        </button>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 12px; line-height: 1.5;">
+          After computing the suitability map, proceed to generate the optimal pipeline route.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize map with Google Satellite
+    const map = L.map('map').setView([51.9607, 7.6261], 12);
+
+    /// Add Google Satellite layer
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+
+    const googleSatellite = L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+      subdomains: '0123',
+      maxZoom: 20,
+      attribution: '&copy; Google'
+    });
+    const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      subdomains: '0123',
+      maxZoom: 20,
+      attribution: '&copy; Google'
+    });
+    const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri'
+    });
+
+    const baseLayers = {
+      'OSM': osm,
+      'Google Satellite': googleSatellite,
+      'Google Hybrid': googleHybrid,
+      'Esri Imagery': esriSatellite
+    };
+
+    // map = L.map('map', { center: [51.96, 7.63], zoom: 10 }).addLayer(googleSatellite);
+    L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
+
+    // Store overlays
+    const overlays = {};
+    let suitabilityOverlay = null;
+    let currentFormat = 'raw';
+
+    // Load configuration from localStorage
+    const config = JSON.parse(localStorage.getItem('pipelineOptimizer_config') || '{}');
+    const filesInfo = JSON.parse(localStorage.getItem('pipelineOptimizer_files') || '{}');
+
+    // Display configuration summary
+    const configSummary = document.getElementById('configSummary');
+    if (config.weights) {
+      configSummary.innerHTML = `
+        <div style="margin-bottom: 10px;">
+          <strong style="color: var(--accent);">Weights:</strong><br>
+          Slope: ${(config.weights.slope || 0).toFixed(2)}<br>
+          Flow: ${(config.weights.flow || 0).toFixed(2)}<br>
+          Soil: ${(config.weights.soil || 0).toFixed(2)}<br>
+          Road: ${(config.weights.road || 0).toFixed(2)}<br>
+          Water: ${(config.weights.water || 0).toFixed(2)}<br>
+          LULC: ${(config.weights.lulc || 0).toFixed(2)}<br>
+          Environment: ${(config.weights.env || 0).toFixed(2)}<br>
+          Cost: ${(config.weights.cost || 0).toFixed(2)}<br>
+          Safety: ${(config.weights.safety || 0).toFixed(2)}
+        </div>
+        <div>
+          <strong style="color: var(--accent);">Pipeline:</strong><br>
+          Pressure: ${config.operating_pressure || 'N/A'} bar<br>
+          Diameter: ${config.pipeline_diameter || 'N/A'} mm
+        </div>
+      `;
+    }
+
+    // Simulate data layers (in real implementation, these would be loaded from uploaded files)
+    const dataLayers = {
+      'dem': 'DEM (Digital Elevation Model)',
+      'slope': 'Slope (computed from DEM)',
+      'flow': 'Flow Accumulation (computed from DEM)',
+      'soil': 'Soil Type',
+      'lulc': 'Land Use / Land Cover',
+      'road': 'Distance to Road',
+      'water': 'Distance to Water Body'
+    };
+
+    // Layer toggle handlers
+    document.querySelectorAll('#layerList input[type="checkbox"]').forEach(checkbox => {
+      checkbox.addEventListener('change', (e) => {
+        const layerId = e.target.id.replace('layer-', '');
+        toggleLayer(layerId, e.target.checked);
+      });
+    });
+
+    function toggleLayer(layerId, show) {
+      if (!show) {
+        if (overlays[layerId]) {
+          map.removeLayer(overlays[layerId]);
+          delete overlays[layerId];
+        }
+        return;
+      }
+
+      // In real implementation, load actual raster data
+      // For demo, create a placeholder overlay
+      const bounds = [[51.90, 7.50], [52.02, 7.75]];
+      const imageUrl = createPlaceholderImage(layerId);
+      
+      const overlay = L.imageOverlay(imageUrl, bounds, { opacity: 0.6 });
+      overlays[layerId] = overlay;
+      overlay.addTo(map);
+      
+      if (suitabilityOverlay) {
+        suitabilityOverlay.bringToFront();
+      }
+    }
+
+    function createPlaceholderImage(layerId) {
+      // Create a colored canvas as placeholder
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 400;
+      const ctx = canvas.getContext('2d');
+      
+      const colors = {
+        'dem': 'rgba(139, 69, 19, 0.4)',
+        'slope': 'rgba(255, 165, 0, 0.4)',
+        'flow': 'rgba(0, 191, 255, 0.4)',
+        'soil': 'rgba(160, 82, 45, 0.4)',
+        'lulc': 'rgba(34, 139, 34, 0.4)',
+        'road': 'rgba(128, 128, 128, 0.4)',
+        'water': 'rgba(0, 0, 255, 0.4)'
+      };
+      
+      const gradient = ctx.createLinearGradient(0, 0, 400, 400);
+      gradient.addColorStop(0, colors[layerId] || 'rgba(100, 100, 100, 0.4)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 400, 400);
+      
+      return canvas.toDataURL();
+    }
+
+    // Suitability computation
+    let suitabilityData = null;
+
+    document.getElementById('computeSuitability').addEventListener('click', () => {
+      const status = document.getElementById('suitStatus');
+      status.textContent = 'Computing suitability map...';
+      status.className = 'status';
+      status.style.display = 'block';
+
+      // Simulate computation (in real implementation, this would process actual rasters)
+      setTimeout(() => {
+        suitabilityData = {
+          raw: 'data_raw',
+          index: 'data_index',
+          classified: 'data_classified'
+        };
+
+        status.textContent = '✓ Suitability map computed successfully!';
+        status.className = 'status success';
+
+        // Enable downloads
+        document.getElementById('downloadRaw').disabled = false;
+        document.getElementById('downloadIndex').disabled = false;
+        document.getElementById('downloadClassified').disabled = false;
+
+        // Show legend
+        document.getElementById('legend').style.display = 'block';
+
+        // Display the suitability map
+        showSuitabilityMap(currentFormat);
+      }, 2000);
+    });
+
+    // Suitability tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentFormat = tab.dataset.format;
+        
+        if (suitabilityData) {
+          showSuitabilityMap(currentFormat);
+        }
+      });
+    });
+
+    function showSuitabilityMap(format) {
+      if (suitabilityOverlay) {
+        map.removeLayer(suitabilityOverlay);
+      }
+
+      const bounds = [[51.90, 7.50], [52.02, 7.75]];
+      const imageUrl = createSuitabilityImage(format);
+      
+      suitabilityOverlay = L.imageOverlay(imageUrl, bounds, { opacity: 0.7 });
+      suitabilityOverlay.addTo(map);
+      suitabilityOverlay.bringToFront();
+    }
+
+    function createSuitabilityImage(format) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 400;
+      const ctx = canvas.getContext('2d');
+
+      if (format === 'classified') {
+        // Create 5-class visualization
+        const colors = ['#006400', '#90EE90', '#FFFF00', '#FFA500', '#FF0000'];
+        for (let i = 0; i < 5; i++) {
+          ctx.fillStyle = colors[i];
+          ctx.fillRect(0, i * 80, 400, 80);
+        }
+      } else if (format === 'index') {
+        // Create gradient 0-10
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, '#006400');
+        gradient.addColorStop(0.5, '#FFFF00');
+        gradient.addColorStop(1, '#FF0000');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 400, 400);
+      } else {
+        // Raw values
+        const gradient = ctx.createRadialGradient(200, 200, 0, 200, 200, 280);
+        gradient.addColorStop(0, 'rgba(0, 180, 216, 0.8)');
+        gradient.addColorStop(1, 'rgba(0, 119, 182, 0.3)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 400, 400);
+      }
+
+      return canvas.toDataURL();
+    }
+
+    // Download buttons
+    document.getElementById('downloadRaw').addEventListener('click', () => downloadSuitability('raw'));
+    document.getElementById('downloadIndex').addEventListener('click', () => downloadSuitability('index'));
+    document.getElementById('downloadClassified').addEventListener('click', () => downloadSuitability('classified'));
+
+    function downloadSuitability(format) {
+      // In real implementation, trigger actual file download
+      alert(`Downloading suitability map (${format} format) as .tif file...\n\nIn production, this would download the actual GeoTIFF file.`);
+    }
+
+    // Proceed to route generation
+    document.getElementById('proceedToRoute').addEventListener('click', () => {
+      // Store suitability status
+      localStorage.setItem('pipelineOptimizer_suitabilityComputed', suitabilityData ? 'true' : 'false');
+      
+      // Show confirmation message
+      const status = document.createElement('div');
+      status.className = 'status success';
+      status.textContent = '✓ Redirecting to route generation...';
+      status.style.marginTop = '10px';
+      document.getElementById('proceedToRoute').parentElement.appendChild(status);
+      
+      // Redirect after brief delay
+      setTimeout(() => {
+        window.location.href = 'page3_route.html';
+      }, 800);
+    });
+  </script>
+</body>
+</html>
